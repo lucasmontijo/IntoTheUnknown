@@ -17,5 +17,15 @@ int main(int argc, char *argv[]) {
 		if (window == NULL) {
 			printf("A janela não pode ser criada com o erro %s.\n", SDL_GetError());
 		}
+		else {
+			surface = SDL_GetWindowSurface(window);
+			SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 0xFF, 0xFF, 0xFF));
+			SDL_UpdateWindowSurface(window);
+			SDL_Delay(10000);
+		}
 	}
+
+	SDL_DestroyWindow(window);
+	SDL_Quit();
+	return 0;
 }
