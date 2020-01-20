@@ -10,6 +10,7 @@
 #define WIDTH 960
 #define HEIGHT 540
 #define PLAYER_LIVES_VALUE 3
+#define GRAVITY 10
 
 typedef struct PLAYER {
 	int lives;
@@ -72,6 +73,7 @@ int getPLayerSpriteStatus();
 void movePlayer();
 void loadGroundSurface();
 void loadGroundTexture();
+void gameOver();
 
 //FUNCTIONS
 void startSDL() {
@@ -275,11 +277,11 @@ void handleEvent(SDL_Event event) {
 		movePlayer();
 		if (event.key.keysym.sym == SDLK_UP) {
 			//PARA CIMA
-			player->yVel = -7;
+			player->yVel = -(GRAVITY);
 		}
 		if (event.key.keysym.sym == SDLK_DOWN) {
 			//PARA BAIXO
-			player->yVel = 7;
+			player->yVel = GRAVITY;
 		}
 		if (event.key.keysym.sym == SDLK_LEFT) {
 			//PARA ESQUERDA
@@ -299,18 +301,23 @@ void handleEvent(SDL_Event event) {
 	}
 	if (event.type == SDL_KEYUP) {
 		player->xVel = 0;
-		player->yVel = 0;
+		player->yVel = GRAVITY;
 		changePlayerSprite(event);
 		loadPlayerTexture();
 	}
 }
 
 void movePlayer() {
+	//calcular a projeção do personagem com a velocidade atual
 	SDL_Rect playerProjection = newRect(player->position.x + player->xVel, player->position.y + player->yVel, player->position.h, player->position.w);
+	
+	//mover o personagem somente se a projeção dele não tiver colisão com o chão
 	if (!SDL_HasIntersection(&playerProjection, &groundRect)) {
-		player->position.x = playerProjection.x;
 		player->position.y = playerProjection.y;
 	}
+	player->position.x = playerProjection.x;
+	
+	//TODO: if para verificar se personagem e inimigo colidiram.
 }
 
 void changePlayerSprite(SDL_Event event) {
@@ -328,7 +335,7 @@ void changePlayerSprite(SDL_Event event) {
 			}
 		}
 		if (event.key.keysym.sym == SDLK_RIGHT) {//andando para direita -> imagens 1, 2, 3 e 4 
-			if (player->spriteStatus < 1 || player->spriteStatus>4) {
+			if (player->spriteStatus < 1 || player->spriteStatus > 4) {
 				player->spriteStatus = 1;
 			}
 			else if (player->spriteStatus != 4) {
@@ -376,11 +383,12 @@ void setNewVoidPlayer() {
 	player = p;
 	player->spriteStatus = 0;
 	player->xVel = 0;
-	player->yVel = 0;
+	player->yVel = GRAVITY;
 }
 
 void setPlayerLives(int lives) {
-	player->lives = lives;
+	if(lives >= 0 && lives <= PLAYER_LIVES_VALUE) player->lives = lives;
+	if (player->lives == 0) gameOver();
 }
 
 void loadGroundSurface() {
@@ -390,4 +398,8 @@ void loadGroundSurface() {
 
 void loadGroundTexture() {
 	groundTexture = SDL_CreateTextureFromSurface(renderer, groundSurface);
+}
+
+void gameOver() {
+
 }
