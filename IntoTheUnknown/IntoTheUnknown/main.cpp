@@ -13,12 +13,14 @@
 #define WIDTH 960
 #define HEIGHT 540
 #define PLAYER_LIVES_VALUE 3
-#define GRAVITY 30
-#define VELOCITY 10
+#define GRAVITY 10
+#define VELOCITY 5
 #define MAXJUMPDISTANCE 70
 #define ENEMIES_VALUE 5
 #define FONTSIZE 25
 #define TOOL_BAR_OPACITY 170
+#define TIME_MACHINE_SPRITES 6
+#define NUM_PLATFORMS 5
 SDL_Color WHITE = { 255, 255, 255 };
 SDL_Color BLACK = { 0, 0, 0 };
 
@@ -47,6 +49,9 @@ typedef struct Level {
 	SDL_Texture* backgroundTexture;
 	SDL_Surface* enemySurface;
 	SDL_Texture* enemyTexture;
+	SDL_Surface* platformSurface;
+	SDL_Texture* platform;
+	SDL_Rect platforms[NUM_PLATFORMS];
 	SDL_Rect enemies[ENEMIES_VALUE];
 }Level;
 
@@ -67,6 +72,12 @@ typedef struct baloon {
 	SDL_Rect position;
 }baloon;
 
+typedef struct timeMachine {
+	SDL_Surface* surfaces[TIME_MACHINE_SPRITES];
+	SDL_Texture* texture;
+	SDL_Rect position;
+}timeMachine;
+
 SDL_Rect newRect(int x, int y, int h, int w);
 //VARIAVEIS GLOBAIS
 int menuStatus;
@@ -82,12 +93,18 @@ int dialogueStatus;
 baloon* dialogueBaloon;
 SDL_Surface* textSurface;
 SDL_Texture* textTexture;
+timeMachine* machine;
 SDL_Rect textRects[1][3] = {
-	 {newRect(174, 156, 0, 0), NULL, NULL}
+	 {newRect(174, 156, 0, 0), newRect(174, 156, 0, 0), newRect(174, 156, 0, 0)}
 };
 std::string dialogues[1][3] = {
-	{"Olá! Meu nome é Dr. Bob. \n Este é meu laboratório.", "b", "c"}
+	{
+		"Olá! Meu nome é Dr. Bob, e este é meu laboratório. Nele eu fiz minhas maiores descobertas científicas.\n\n\n Direita -> continuar", 
+		"Essa é a minha mais nova invenção: uma máquina do tempo. Infelizmente ainda não calculei todos os parâmetros para seu funcionamento.\n\n Direita -> continuar", 
+		"Você poderia me ajudar a ajustar os parâmetros da máquina? \n\n\n\n Direita -> ajudar"
+	}
 };
+std::string levelTitles[3] = {"Missão 1: Encontrar máquina do tempo.", "Missão 2: ", ""};
 
 //RECTS
 SDL_Rect menuSelectionRect;
@@ -118,10 +135,10 @@ SDL_Event eventHappened;
 
 //HEADER OF FUNCTIONS BELOW MAIN
 bool loadPlayerSurfaces();
-void play();
+void play(int num);
 void setNewVoidPlayer();
 void setPlayerLives(int lives);
-void setPlay();
+void setPlay(int num);
 bool loadPlayerTexture();
 void handleEvent(SDL_Event event);
 void setPlayerPosition(int x, int y);
@@ -148,6 +165,22 @@ void startSDL() {
 void createWindow() {
 	window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_SHOWN);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+}
+
+void createTimeMachine() {
+	timeMachine* a = (timeMachine*)malloc(sizeof(timeMachine));
+	machine = a;
+	std::string path;
+	for (int i = 0; i < TIME_MACHINE_SPRITES; i++) {
+		path = "Imagens/TimeMachine/timeMachine_" + std::to_string(i) + ".png";
+		machine->surfaces[i] = IMG_Load(path.c_str());
+		if (!machine->surfaces[i]) printf("Não foi possivel abrir a imagem %s.\n", path.c_str());
+		else printf("Imagem %s carregada com sucesso!\n", path.c_str());
+	}
+}
+
+int* returnPointer(int num) {
+	return &num;
 }
 
 void createDialogueBaloon() {
@@ -181,13 +214,13 @@ void setToolBar() {
 		if (bar->livesSurfaces[i]) printf("Imagem %s aberta com sucesso. \n", b.c_str());
 	}
 	bar->backgroundSurface = IMG_Load("Imagens/toolBar.png");
-	bar->position.h = 100;
+	bar->position.h = 70;
 	bar->position.w = WIDTH;
 	bar->position.x = 0;
 	bar->position.y = 0;
 
-	bar->livesPosition.h = bar->livesSurfaces[0]->h;
-	bar->livesPosition.w = bar->livesSurfaces[0]->w;
+	bar->livesPosition.h = bar->livesSurfaces[0]->h/2;
+	bar->livesPosition.w = bar->livesSurfaces[0]->w/2;
 	bar->livesPosition.x = 50;
 	bar->livesPosition.y = (bar->position.h / 2) - (bar->livesPosition.h / 2);
 }
@@ -347,6 +380,9 @@ int main(int argc, char *argv[]) {
 void onDialogue() {
 	int dialogueQuant;
 	int currentStatus = 0;
+	int timeMachineStatus = 0;
+	createTimeMachine();
+	
 	switch (dialogueStatus) { //mudar o dialogue quant de acordo com qual dialogo for e quantos sub dalogos tem em cada dialogo
 		case 0: 
 			dialogueQuant = 3;
@@ -359,7 +395,7 @@ void onDialogue() {
 			dialogueQuant = 0;
 			break;
 	}
-	setPlay();
+	setPlay(0);
 	setToolBar();
 	createDialogueBaloon();
 	temporatyPlayerSurface = IMG_Load("Imagens/Personagens/Cientista/sprite_hd.png");
@@ -387,17 +423,16 @@ void onDialogue() {
 			}
 		}
 		if (dialogueStatus == 0) { //Diálogo Zero, ao fim, play na fase 1 468 138 xy
-			if (currentStatus > dialogueQuant) {
+			if (currentStatus >= dialogueQuant) {
 				stay = false;
 				currentStatus = 0;
 				break;
 			}
-
 			//Limpar o renderer
 			SDL_RenderClear(renderer);
-
+			
 			//criar surfaces
-			textSurface = TTF_RenderText_Solid(font, dialogues[0][currentStatus].c_str(), BLACK);
+			textSurface = TTF_RenderText_Blended_Wrapped(font, dialogues[0][currentStatus].c_str(), BLACK, 430);
 
 			//Criar texturas
 			gameLevel->backgroundTexture = SDL_CreateTextureFromSurface(renderer, gameLevel->backgroundSurface);
@@ -417,6 +452,19 @@ void onDialogue() {
 			SDL_RenderCopy(renderer, dialogueBaloon->texture, NULL, &dialogueBaloon->position);
 			SDL_RenderCopy(renderer, textTexture, NULL, &textRects[dialogueStatus][currentStatus]);
 
+			//Exibir máquina do tempo
+			if (currentStatus == 1 || currentStatus == 2) {
+				machine->position.h = 170;
+				machine->position.w = 170;
+				machine->position.x = 247;
+				machine->position.y = 346;
+				machine->texture = SDL_CreateTextureFromSurface(renderer, machine->surfaces[timeMachineStatus]);
+				SDL_RenderCopy(renderer, machine->texture, NULL, &machine->position);
+				SDL_DestroyTexture(machine->texture);
+				if (timeMachineStatus == (TIME_MACHINE_SPRITES - 1)) timeMachineStatus = 0;
+				else timeMachineStatus++;
+			}
+
 			//Limpar texturas criadas para melhor uso de memória
 			SDL_DestroyTexture(gameLevel->backgroundTexture);
 			SDL_DestroyTexture(bar->background);
@@ -430,13 +478,29 @@ void onDialogue() {
 			SDL_RenderPresent(renderer);
 		}
 	}
-	play();
+	SDL_DestroyTexture(gameLevel->backgroundTexture);
+	SDL_DestroyTexture(bar->background);
+	SDL_DestroyTexture(bar->lives);
+	SDL_DestroyTexture(temporaryPlayerTexture);
+	SDL_DestroyTexture(dialogueBaloon->texture);
+	SDL_DestroyTexture(textTexture);
+	play(dialogueStatus);
 }
 
-void play() {
-	//setPlay();
+void play(int num) {
+	SDL_Rect tempRect;
+	printf("dialoguestatus %d\n", num);
+	setPlay(num);
 	bool stay = true;
-	while (gameStatus) {
+	SDL_RenderClear(renderer);
+	textSurface = TTF_RenderText_Blended_Wrapped(font, levelTitles[num].c_str(), WHITE, 450);
+	textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+	SDL_QueryTexture(textTexture, NULL, NULL, &tempRect.w, &tempRect.h);
+	SDL_RenderCopy(renderer, textTexture, NULL, &newRect((WIDTH / 2 - textSurface->w / 2), (HEIGHT / 2 - textSurface->h / 2), tempRect.h, tempRect.w));
+	SDL_RenderPresent(renderer);
+	SDL_Delay(3000);
+
+	while (stay) {
 		while (SDL_PollEvent(&eventHappened)) {
 			if (eventHappened.type == SDL_QUIT) {
 				SDL_DestroyTexture(menuFundoTexture);
@@ -447,14 +511,37 @@ void play() {
 			}
 			else handleEvent(eventHappened);
 		}
+		//limpar o renderer
 		SDL_RenderClear(renderer);
+		
+		//chamar função para verificar movimento
 		movePlayer();
+
+		//criar texturas
+		bar->background = SDL_CreateTextureFromSurface(renderer, bar->backgroundSurface);
+		bar->lives = SDL_CreateTextureFromSurface(renderer, bar->livesSurfaces[player->lives - 1]);
+		loadPlayerTexture();
+		
 		player->position.h = player->surface[player->spriteStatus]->h;
 		player->position.w = player->surface[player->spriteStatus]->w;
+
+		//copiar textures para o render
+		for (int i = 0; i < NUM_PLATFORMS; i++) {
+			SDL_RenderCopy(renderer, gameLevel->platform, NULL, &gameLevel->platforms[i]);
+		}
 		SDL_RenderCopy(renderer, player->texture, NULL, &player->position);
-		SDL_RenderCopy(renderer, groundTexture, NULL, &groundRect);
+		SDL_RenderCopy(renderer, bar->background, NULL, &bar->position); //fundo da toolBar
+		SDL_RenderCopy(renderer, bar->lives, NULL, &bar->livesPosition); //textura das vidas
+		
+		//limpar texturas
+		SDL_DestroyTexture(player->texture);
+		SDL_DestroyTexture(groundTexture);
+		SDL_DestroyTexture(bar->background);
+		SDL_DestroyTexture(bar->lives);
+
+		//apresentar o render
 		SDL_RenderPresent(renderer);
-		SDL_Delay(30);
+		SDL_Delay(10);
 	}
 }
 
@@ -462,24 +549,36 @@ int getPLayerSpriteStatus() {
 	return player->spriteStatus;
 }
 
-void setPlay() {
+void setPlay(int num) {
 	printf("Jogando");
 	clearScreen();
 	setNewVoidPlayer();
 	setPlayerLives(PLAYER_LIVES_VALUE);
 	loadPlayerSurfaces();
-	loadPlayerTexture();
 	setPlayerPosition(0, 100);
 	loadGroundSurface();
 	loadGroundTexture();
 	groundRect = newRect(0, HEIGHT - 100, 100, WIDTH);
 	player->yVel = GRAVITY;
 	SDL_RenderPresent(renderer);
+	switch (num) {
+		//definir parametros primeira missao
+	case 0:
+		gameLevel->platformSurface = IMG_Load("Imagens/ground.png");
+		gameLevel->platform = SDL_CreateTextureFromSurface(renderer, gameLevel->platformSurface);
+		gameLevel->platforms[0] = groundRect;
+		gameLevel->platforms[1] = newRect(500, 300, gameLevel->platformSurface->h, gameLevel->platformSurface->w);
+		gameLevel->platforms[2] = newRect(0, 0, 0, 0);
+		gameLevel->platforms[3] = newRect(0, 0, 0, 0);
+		gameLevel->platforms[4] = newRect(0, 0, 0, 0);
+		printf("Case zero");
+		break;
+	}
 }
 
 void handleEvent(SDL_Event event) {
 	if (event.type == SDL_KEYDOWN) {
-		movePlayer();
+		//movePlayer();
 		if (event.key.keysym.sym == SDLK_UP) {
 			player->yVel = -GRAVITY;
 			if (player->jumpStatus == false) {
@@ -494,13 +593,11 @@ void handleEvent(SDL_Event event) {
 		if (event.key.keysym.sym == SDLK_LEFT) {
 			//PARA ESQUERDA
 			changePlayerSprite(event);
-			loadPlayerTexture();
 			player->xVel = -(VELOCITY);
 		}
 		if (event.key.keysym.sym == SDLK_RIGHT) {
 			//PARA DIREITA
 			changePlayerSprite(event);
-			loadPlayerTexture();
 			player->xVel = VELOCITY;
 		}
 		if (event.key.keysym.sym == SDLK_SPACE) {
@@ -520,20 +617,40 @@ void handleEvent(SDL_Event event) {
 }
 
 void movePlayer() {
-	//calcular a projeção do personagem com a velocidade atual
+	bool hasCollision = false;
+	bool hasXCollision = false;
+	bool hasYCollision = false;
+
+	//calcular a projeções do personagem com a velocidade atual
 	SDL_Rect playerProjection = newRect(player->position.x + player->xVel, player->position.y + player->yVel, player->position.h, player->position.w);
+	SDL_Rect playerYProjection = newRect(player->position.x, playerProjection.y, player->position.h, player->position.w);
+	SDL_Rect playerXProjection = newRect(playerProjection.x, player->position.y, player->position.h, player->position.w);
 
-
-	//mover o personagem somente se a projeção dele não tiver colisão com o chão
-	if (!SDL_HasIntersection(&playerProjection, &groundRect)) {
-		player->position.y = playerProjection.y;
+	//verificar se personagem colide com as plataformas do nível
+	for (int i = 0; i < NUM_PLATFORMS; i++) {
+		if (SDL_HasIntersection(&playerProjection, &gameLevel->platforms[i])) {
+			hasCollision = true;
+			if (SDL_HasIntersection(&playerXProjection, &gameLevel->platforms[i])) hasXCollision = true;
+			if (SDL_HasIntersection(&playerYProjection, &gameLevel->platforms[i])) hasYCollision = true;
+		}
 	}
-	else {
+
+
+	if (hasXCollision) {
+		player->xVel = 0;
+		playerProjection.x = player->position.x;
+	}
+	if (hasYCollision) {
+		player->yVel = GRAVITY;
+		playerProjection.y = player->position.y;
+	}
+	player->position = playerProjection;
+
+	if (player->jumpStatus && player->position.y - jumpStartPosition.y >= MAXJUMPDISTANCE) {
+		printf("Altura maxima aqqqqqqqqqqqqqqqqqqq \n");
+		player->jumpStatus = false;
 		player->yVel = GRAVITY;
 	}
-	player->position.x = playerProjection.x;
-	
-	//TODO: if para verificar se personagem e inimigo colidiram.
 }
 
 void changePlayerSprite(SDL_Event event) {
@@ -568,8 +685,7 @@ void changePlayerSprite(SDL_Event event) {
 	else if (event.type == SDL_KEYUP && (event.key.keysym.sym == SDLK_RIGHT || event.key.keysym.sym == SDLK_LEFT)) {
 		player->spriteStatus = 0;
 	}
-	printf("%d\n", player->spriteStatus);
-	SDL_DestroyTexture(player->texture);
+	//SDL_DestroyTexture(player->texture);
 }
 
 void setPlayerPosition(int x, int y) {
