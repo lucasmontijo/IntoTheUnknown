@@ -12,10 +12,12 @@
 #define NUM_SPRITES 9
 #define WIDTH 960
 #define HEIGHT 540
+#define bgWIDTH 1920
+#define bgHEIGHT 540
 #define PLAYER_LIVES_VALUE 3
 #define GRAVITY 10
 #define VELOCITY 5
-#define MAXJUMPDISTANCE 70
+#define MAXJUMPDISTANCE 180
 #define ENEMIES_VALUE 5
 #define FONTSIZE 25
 #define TOOL_BAR_OPACITY 170
@@ -23,7 +25,6 @@
 #define NUM_PLATFORMS 5
 SDL_Color WHITE = { 255, 255, 255 };
 SDL_Color BLACK = { 0, 0, 0 };
-
 
 //ESTRUTURAS
 typedef struct PLAYER {
@@ -47,6 +48,7 @@ typedef struct Level {
 	int number;
 	SDL_Surface* backgroundSurface;
 	SDL_Texture* backgroundTexture;
+	SDL_Rect backgroundPosition;
 	SDL_Surface* enemySurface;
 	SDL_Texture* enemyTexture;
 	SDL_Surface* platformSurface;
@@ -144,7 +146,7 @@ void handleEvent(SDL_Event event);
 void setPlayerPosition(int x, int y);
 void changePlayerSprite(SDL_Event event);
 int getPLayerSpriteStatus();
-void movePlayer();
+bool movePlayer();
 void loadGroundSurface();
 void loadGroundTexture();
 void gameOver();
@@ -509,6 +511,10 @@ void play(int num) {
 				stay = false;
 				break;
 			}
+			if (eventHappened.type == SDL_MOUSEBUTTONDOWN) {
+				printf("X = %d\n", eventHappened.button.x);
+				printf("Y = %d\n", eventHappened.button.y);
+			}
 			else handleEvent(eventHappened);
 		}
 		//limpar o renderer
@@ -519,18 +525,22 @@ void play(int num) {
 
 		//criar texturas
 		bar->background = SDL_CreateTextureFromSurface(renderer, bar->backgroundSurface);
+		SDL_SetTextureAlphaMod(bar->background, TOOL_BAR_OPACITY);
 		bar->lives = SDL_CreateTextureFromSurface(renderer, bar->livesSurfaces[player->lives - 1]);
+		gameLevel->backgroundTexture = SDL_CreateTextureFromSurface(renderer, gameLevel->backgroundSurface);
 		loadPlayerTexture();
 		
 		player->position.h = player->surface[player->spriteStatus]->h;
 		player->position.w = player->surface[player->spriteStatus]->w;
 
 		//copiar textures para o render
+		SDL_RenderCopy(renderer, gameLevel->backgroundTexture, NULL, &gameLevel->backgroundPosition);
 		for (int i = 0; i < NUM_PLATFORMS; i++) {
 			SDL_RenderCopy(renderer, gameLevel->platform, NULL, &gameLevel->platforms[i]);
 		}
 		SDL_RenderCopy(renderer, player->texture, NULL, &player->position);
 		SDL_RenderCopy(renderer, bar->background, NULL, &bar->position); //fundo da toolBar
+		
 		SDL_RenderCopy(renderer, bar->lives, NULL, &bar->livesPosition); //textura das vidas
 		
 		//limpar texturas
@@ -538,6 +548,7 @@ void play(int num) {
 		SDL_DestroyTexture(groundTexture);
 		SDL_DestroyTexture(bar->background);
 		SDL_DestroyTexture(bar->lives);
+		SDL_DestroyTexture(gameLevel->backgroundTexture);
 
 		//apresentar o render
 		SDL_RenderPresent(renderer);
@@ -558,12 +569,16 @@ void setPlay(int num) {
 	setPlayerPosition(0, 100);
 	loadGroundSurface();
 	loadGroundTexture();
+	jumpStartPosition = newRect(0, 0, 0, 0);
 	groundRect = newRect(0, HEIGHT - 100, 100, WIDTH);
 	player->yVel = GRAVITY;
 	SDL_RenderPresent(renderer);
+	player->jumpStatus = false;
 	switch (num) {
 		//definir parametros primeira missao
 	case 0:
+		gameLevel->backgroundSurface = IMG_Load("Imagens/lab_background_full.png");
+		gameLevel->backgroundPosition = newRect(0, 0, bgHEIGHT, bgWIDTH);
 		gameLevel->platformSurface = IMG_Load("Imagens/ground.png");
 		gameLevel->platform = SDL_CreateTextureFromSurface(renderer, gameLevel->platformSurface);
 		gameLevel->platforms[0] = groundRect;
@@ -580,8 +595,9 @@ void handleEvent(SDL_Event event) {
 	if (event.type == SDL_KEYDOWN) {
 		//movePlayer();
 		if (event.key.keysym.sym == SDLK_UP) {
-			player->yVel = -GRAVITY;
 			if (player->jumpStatus == false) {
+				printf("mds pulei");
+				player->yVel = -GRAVITY;
 				player->jumpStatus = true;
 				jumpStartPosition = player->position;
 			}
@@ -616,13 +632,15 @@ void handleEvent(SDL_Event event) {
 	}
 }
 
-void movePlayer() {
+bool movePlayer() {
+	int difference = 0;
 	bool hasCollision = false;
 	bool hasXCollision = false;
 	bool hasYCollision = false;
 
 	//calcular a projeções do personagem com a velocidade atual
 	SDL_Rect playerProjection = newRect(player->position.x + player->xVel, player->position.y + player->yVel, player->position.h, player->position.w);
+	if (SDL_RectEquals(&player->position, &playerProjection)) return false;
 	SDL_Rect playerYProjection = newRect(player->position.x, playerProjection.y, player->position.h, player->position.w);
 	SDL_Rect playerXProjection = newRect(playerProjection.x, player->position.y, player->position.h, player->position.w);
 
@@ -635,22 +653,69 @@ void movePlayer() {
 		}
 	}
 
-
+	//Se o jogador colidir com algo na horizontal
 	if (hasXCollision) {
 		player->xVel = 0;
 		playerProjection.x = player->position.x;
 	}
+
+	//Se o jogador colidir com algo na vertical
 	if (hasYCollision) {
+		player->jumpStatus = false;
 		player->yVel = GRAVITY;
 		playerProjection.y = player->position.y;
 	}
-	player->position = playerProjection;
 
-	if (player->jumpStatus && player->position.y - jumpStartPosition.y >= MAXJUMPDISTANCE) {
-		printf("Altura maxima aqqqqqqqqqqqqqqqqqqq \n");
-		player->jumpStatus = false;
+	//Se atingiu o limite maximo de altura para pulo
+	if (player->jumpStatus == true && jumpStartPosition.y - player->position.y >= MAXJUMPDISTANCE) {
 		player->yVel = GRAVITY;
 	}
+
+	//mover background e rects
+	difference = playerProjection.x - player->position.x;
+	//printf("Playerprojextion = %d, playerposition=%d, difference=%d\n", playerProjection.x, player->position.x, difference);
+	if (playerProjection.x < (WIDTH * 0.3) && playerProjection.x > 0) { //player na primeira parte da tela
+		if (difference < 0) {//personagem se movendo p tras
+			if (gameLevel->backgroundPosition.x - difference <= 0) {//se da pra mover o fundo
+				gameLevel->backgroundPosition.x -= difference;
+			}
+			else { //se n da pra mover bg
+				gameLevel->backgroundPosition.x = 0;
+				player->position.x = playerProjection.x;
+				//mover tb rects
+			}
+		}
+		else if (difference > 0) {//personagem movendo p frente
+			player->position.x = playerProjection.x;
+		}
+	}
+	else if (playerProjection.x > ((0.6) * WIDTH) && playerProjection.x <= WIDTH-player->position.w) {//personagem na ultima parte da tela
+		if (difference > 0) {//personagem se movendo p frente
+			if (gameLevel->backgroundPosition.x - difference >= -WIDTH) {//pode mover o bg
+				gameLevel->backgroundPosition.x -= difference;
+				//fazer rects moverem
+			}
+			else {//n da pra mover o bg
+				gameLevel->backgroundPosition.x = -WIDTH;
+				player->position.x = playerProjection.x;
+			}
+		}
+		if (difference < 0) {
+			player->position.x = playerProjection.x;
+		}
+	}
+	else {
+		player->position.x = playerProjection.x;
+	}
+	if (player->position.x < 0) player->position.x = 0;
+	if (player->position.x > WIDTH)player->position.x = WIDTH - player->position.w - 5;
+	player->position.y = playerProjection.y;
+	
+	//player->position = playerProjection;
+
+	
+
+
 }
 
 void changePlayerSprite(SDL_Event event) {

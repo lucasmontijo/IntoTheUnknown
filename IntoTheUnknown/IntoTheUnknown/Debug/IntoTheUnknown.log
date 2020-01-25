@@ -1,3 +1,4 @@
 ﻿  main.cpp
-F:\GitHub\IntoTheUnknown\IntoTheUnknown\IntoTheUnknown\main.cpp(183): warning C4172: retornando o endereço da variável local ou temporário: num
+F:\GitHub\IntoTheUnknown\IntoTheUnknown\IntoTheUnknown\main.cpp(185): warning C4172: retornando o endereço da variável local ou temporário: num
+F:\GitHub\IntoTheUnknown\IntoTheUnknown\IntoTheUnknown\main.cpp(719): warning C4715: 'movePlayer': nem todos os caminhos de controle retornam um valor
   IntoTheUnknown.vcxproj -> F:\GitHub\IntoTheUnknown\IntoTheUnknown\Debug\IntoTheUnknown.exe
