@@ -17,12 +17,16 @@
 #define PLAYER_LIVES_VALUE 3
 #define GRAVITY 10
 #define VELOCITY 5
-#define MAXJUMPDISTANCE 180
-#define ENEMIES_VALUE 5
+#define MAXJUMPDISTANCE 200
+#define ENEMIES_VALUE 3
 #define FONTSIZE 25
 #define TOOL_BAR_OPACITY 170
 #define TIME_MACHINE_SPRITES 6
-#define NUM_PLATFORMS 5
+#define NUM_PLATFORMS 7
+#define NUM_STARS 4
+#define NUM_LEVELS 4
+#define ENEMY_VELOCITY 6
+#define MAX_ENEMY_DISTANCE 250
 SDL_Color WHITE = { 255, 255, 255 };
 SDL_Color BLACK = { 0, 0, 0 };
 
@@ -46,6 +50,7 @@ typedef struct TELA {
 
 typedef struct Level {
 	int number;
+	int enemyVelocity;
 	SDL_Surface* backgroundSurface;
 	SDL_Texture* backgroundTexture;
 	SDL_Rect backgroundPosition;
@@ -53,8 +58,12 @@ typedef struct Level {
 	SDL_Texture* enemyTexture;
 	SDL_Surface* platformSurface;
 	SDL_Texture* platform;
+	SDL_Surface* starsSurface;
+	SDL_Texture* starsTexture;
+	SDL_Rect starsPositions[NUM_STARS];
 	SDL_Rect platforms[NUM_PLATFORMS];
 	SDL_Rect enemies[ENEMIES_VALUE];
+	SDL_Rect enemiesStart[ENEMIES_VALUE];
 }Level;
 
 typedef struct toolBar {
@@ -66,6 +75,9 @@ typedef struct toolBar {
 	SDL_Texture* score;
 	SDL_Texture* background;
 	SDL_Rect position;
+	SDL_Rect scorePosition;
+	int scoreH;
+	int scoreW;
 }toolBar;
 
 typedef struct baloon {
@@ -82,7 +94,9 @@ typedef struct timeMachine {
 
 SDL_Rect newRect(int x, int y, int h, int w);
 //VARIAVEIS GLOBAIS
+bool onInit = false;
 int menuStatus;
+int scoreTemp = 0;
 int gameStatus;
 SDL_Rect fundo;
 PLAYER* player;
@@ -94,7 +108,9 @@ Level* gameLevel;
 int dialogueStatus;
 baloon* dialogueBaloon;
 SDL_Surface* textSurface;
+SDL_Surface* textPreSurface;
 SDL_Texture* textTexture;
+SDL_Texture* textPreTexture;
 timeMachine* machine;
 SDL_Rect textRects[1][3] = {
 	 {newRect(174, 156, 0, 0), newRect(174, 156, 0, 0), newRect(174, 156, 0, 0)}
@@ -106,7 +122,17 @@ std::string dialogues[1][3] = {
 		"Você poderia me ajudar a ajustar os parâmetros da máquina? \n\n\n\n Direita -> ajudar"
 	}
 };
-std::string levelTitles[3] = {"Missão 1: Encontrar máquina do tempo.", "Missão 2: ", ""};
+std::string levelTitles[NUM_LEVELS] = {
+	"Encontre a máquina do tempo coletando estrelas.", 
+	"Volte à máquina. Cuidado com inimigos.", 
+	"Volte à máquina, Cuidado com os robôs assassinos.",
+	"Volte à máquina. Dinossauros são fofos e perigosos!"
+};
+std::string levelTitlesPre[NUM_LEVELS] = {"Laboratório do Dr. Bob. Atualmente.", 
+	"Pântano de Pangéia. 110 milhões de anos atrás.", 
+	"Central City. 110 anos no futuro.",
+	"Pangéia. 65 milhões de anos atrás."
+};
 
 //RECTS
 SDL_Rect menuSelectionRect;
@@ -151,6 +177,8 @@ void loadGroundSurface();
 void loadGroundTexture();
 void gameOver();
 void onDialogue();
+void playerLostLife();
+void winner();
 
 //FUNCTIONS
 void startFont();
@@ -225,6 +253,10 @@ void setToolBar() {
 	bar->livesPosition.w = bar->livesSurfaces[0]->w/2;
 	bar->livesPosition.x = 50;
 	bar->livesPosition.y = (bar->position.h / 2) - (bar->livesPosition.h / 2);
+
+	std::string c = "Score: " + std::to_string(player->score);
+	bar->scoreSurface = TTF_RenderText_Blended_Wrapped(font, c.c_str(), WHITE, 200);
+	bar->scorePosition = newRect(731, bar->livesPosition.y + 40, bar->scoreSurface->h, bar->scoreSurface->w);
 }
 
 
@@ -334,6 +366,7 @@ int main(int argc, char *argv[]) {
 				if (eventHappened.key.keysym.sym == SDLK_RETURN || eventHappened.key.keysym.sym == SDLK_KP_ENTER) {
 					if (menuStatus == 0) {//JOGAR
 						gameStatus = PLAYING;
+						onInit = true;
 						stay = false;
 					}
 					if (menuStatus == 1) {
@@ -397,7 +430,7 @@ void onDialogue() {
 			dialogueQuant = 0;
 			break;
 	}
-	setPlay(0);
+	setPlay(gameLevel->number);
 	setToolBar();
 	createDialogueBaloon();
 	temporatyPlayerSurface = IMG_Load("Imagens/Personagens/Cientista/sprite_hd.png");
@@ -435,21 +468,27 @@ void onDialogue() {
 			
 			//criar surfaces
 			textSurface = TTF_RenderText_Blended_Wrapped(font, dialogues[0][currentStatus].c_str(), BLACK, 430);
+			std::string c = "Score: " + std::to_string(player->score);
+			bar->scoreSurface = TTF_RenderText_Blended_Wrapped(font, c.c_str(), WHITE, 200);
+
 
 			//Criar texturas
 			gameLevel->backgroundTexture = SDL_CreateTextureFromSurface(renderer, gameLevel->backgroundSurface);
 			bar->background = SDL_CreateTextureFromSurface(renderer, bar->backgroundSurface);
 			bar->lives = SDL_CreateTextureFromSurface(renderer, bar->livesSurfaces[player->lives - 1]);
+			bar->score = SDL_CreateTextureFromSurface(renderer, bar->scoreSurface);
 			SDL_SetTextureAlphaMod(bar->background, TOOL_BAR_OPACITY);
 			temporaryPlayerTexture = SDL_CreateTextureFromSurface(renderer, temporatyPlayerSurface);
 			dialogueBaloon->texture = SDL_CreateTextureFromSurface(renderer, dialogueBaloon->surface);
 			textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
 			SDL_QueryTexture(textTexture, NULL, NULL, &textRects[dialogueStatus][currentStatus].w, &textRects[dialogueStatus][currentStatus].h);
+			SDL_QueryTexture(bar->score, NULL, NULL, &bar->scoreW, &bar->scoreH);
 
 			//Copiar texturas para o renderer
 			SDL_RenderCopy(renderer, gameLevel->backgroundTexture, NULL, NULL); //fundo do dialogo
 			SDL_RenderCopy(renderer, bar->background, NULL, &bar->position); //fundo da toolBar
 			SDL_RenderCopy(renderer, bar->lives, NULL, &bar->livesPosition); //textura das vidas
+			SDL_RenderCopy(renderer, bar->score, NULL, &bar->scorePosition); //score
 			SDL_RenderCopy(renderer, temporaryPlayerTexture, NULL, &temporaryPlayerRect);//textura apresentação personagem
 			SDL_RenderCopy(renderer, dialogueBaloon->texture, NULL, &dialogueBaloon->position);
 			SDL_RenderCopy(renderer, textTexture, NULL, &textRects[dialogueStatus][currentStatus]);
@@ -475,6 +514,9 @@ void onDialogue() {
 			SDL_DestroyTexture(dialogueBaloon->texture);
 			SDL_FreeSurface(textSurface);
 			SDL_DestroyTexture(textTexture);
+			SDL_DestroyTexture(bar->score);
+			SDL_FreeSurface(bar->scoreSurface);
+
 
 			//Apresentar o render com as texturas copiadas
 			SDL_RenderPresent(renderer);
@@ -490,22 +532,37 @@ void onDialogue() {
 }
 
 void play(int num) {
+	int currentStatus = 0;
 	SDL_Rect tempRect;
-	printf("dialoguestatus %d\n", num);
+	SDL_Rect tempRect2;
 	setPlay(num);
 	bool stay = true;
 	SDL_RenderClear(renderer);
-	textSurface = TTF_RenderText_Blended_Wrapped(font, levelTitles[num].c_str(), WHITE, 450);
+	textSurface = TTF_RenderText_Blended_Wrapped(font, levelTitles[num].c_str(), WHITE, 800);
 	textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+	textPreSurface = TTF_RenderText_Solid(font, levelTitlesPre[num].c_str(), WHITE);
+	textPreTexture = SDL_CreateTextureFromSurface(renderer, textPreSurface);
+	SDL_QueryTexture(textPreTexture, NULL, NULL, &tempRect2.w, &tempRect2.h);
 	SDL_QueryTexture(textTexture, NULL, NULL, &tempRect.w, &tempRect.h);
+	tempRect2.x = WIDTH / 2 - tempRect2.w / 2;
+	tempRect2.y = HEIGHT / 2 - tempRect2.h - 20;
+	SDL_RenderCopy(renderer, textPreTexture, NULL, &tempRect2);
 	SDL_RenderCopy(renderer, textTexture, NULL, &newRect((WIDTH / 2 - textSurface->w / 2), (HEIGHT / 2 - textSurface->h / 2), tempRect.h, tempRect.w));
 	SDL_RenderPresent(renderer);
-	SDL_Delay(3000);
-
+	SDL_Delay(1000);//lemrar de aumentarrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr p 5000
 	while (stay) {
 		while (SDL_PollEvent(&eventHappened)) {
 			if (eventHappened.type == SDL_QUIT) {
-				SDL_DestroyTexture(menuFundoTexture);
+				SDL_DestroyTexture(player->texture);
+				SDL_DestroyTexture(groundTexture);
+				SDL_DestroyTexture(bar->background);
+				SDL_DestroyTexture(bar->lives);
+				SDL_DestroyTexture(machine->texture);
+				SDL_DestroyTexture(gameLevel->backgroundTexture);
+				SDL_DestroyTexture(gameLevel->starsTexture);
+				if (gameLevel->number > 0) SDL_DestroyTexture(gameLevel->enemyTexture);
+				SDL_DestroyTexture(bar->score);
+				SDL_DestroyTexture(gameLevel->platform);
 				SDL_DestroyRenderer(renderer);
 				SDL_DestroyWindow(window);
 				stay = false;
@@ -519,6 +576,10 @@ void play(int num) {
 		}
 		//limpar o renderer
 		SDL_RenderClear(renderer);
+
+		//criar surface do score
+		std::string c = "Score: " + std::to_string(player->score);
+		bar->scoreSurface = TTF_RenderText_Blended_Wrapped(font, c.c_str(), WHITE, 200);
 		
 		//chamar função para verificar movimento
 		movePlayer();
@@ -529,30 +590,52 @@ void play(int num) {
 		bar->lives = SDL_CreateTextureFromSurface(renderer, bar->livesSurfaces[player->lives - 1]);
 		gameLevel->backgroundTexture = SDL_CreateTextureFromSurface(renderer, gameLevel->backgroundSurface);
 		loadPlayerTexture();
-		
+		gameLevel->starsTexture = SDL_CreateTextureFromSurface(renderer, gameLevel->starsSurface);
+		machine->texture = SDL_CreateTextureFromSurface(renderer, machine->surfaces[currentStatus]);
+		currentStatus++;
+		if (currentStatus < 0 || currentStatus>=TIME_MACHINE_SPRITES) currentStatus = 0;
 		player->position.h = player->surface[player->spriteStatus]->h;
 		player->position.w = player->surface[player->spriteStatus]->w;
+		bar->score = SDL_CreateTextureFromSurface(renderer, bar->scoreSurface);
+		SDL_QueryTexture(bar->score, NULL, NULL, &bar->scoreW, &bar->scoreH);
+		gameLevel->platform = SDL_CreateTextureFromSurface(renderer, gameLevel->platformSurface);
 
 		//copiar textures para o render
-		SDL_RenderCopy(renderer, gameLevel->backgroundTexture, NULL, &gameLevel->backgroundPosition);
+		SDL_RenderCopy(renderer, gameLevel->backgroundTexture, NULL, &gameLevel->backgroundPosition);//
 		for (int i = 0; i < NUM_PLATFORMS; i++) {
 			SDL_RenderCopy(renderer, gameLevel->platform, NULL, &gameLevel->platforms[i]);
 		}
+		for (int i = 0; i < NUM_STARS; i++) {
+			SDL_RenderCopy(renderer, gameLevel->starsTexture, NULL, &gameLevel->starsPositions[i]);
+		}
 		SDL_RenderCopy(renderer, player->texture, NULL, &player->position);
+		SDL_RenderCopy(renderer, machine->texture, NULL, &machine->position);
+		if (gameLevel->number > 0) {
+			gameLevel->enemyTexture = SDL_CreateTextureFromSurface(renderer, gameLevel->enemySurface);
+			for (int i = 0; i < ENEMIES_VALUE; i++) {
+				SDL_RenderCopy(renderer, gameLevel->enemyTexture, NULL, &gameLevel->enemies[i]);
+			}
+			//SDL_DestroyTexture(gameLevel->enemyTexture);
+		}
 		SDL_RenderCopy(renderer, bar->background, NULL, &bar->position); //fundo da toolBar
-		
 		SDL_RenderCopy(renderer, bar->lives, NULL, &bar->livesPosition); //textura das vidas
+		SDL_RenderCopy(renderer, bar->score, NULL, &bar->scorePosition);
 		
 		//limpar texturas
-		SDL_DestroyTexture(player->texture);
+		SDL_DestroyTexture(player->texture); 
 		SDL_DestroyTexture(groundTexture);
 		SDL_DestroyTexture(bar->background);
 		SDL_DestroyTexture(bar->lives);
+		SDL_DestroyTexture(machine->texture);
 		SDL_DestroyTexture(gameLevel->backgroundTexture);
+		SDL_DestroyTexture(gameLevel->starsTexture);
+		if(gameLevel->number>0) SDL_DestroyTexture(gameLevel->enemyTexture);
+		SDL_DestroyTexture(bar->score);
+		SDL_DestroyTexture(gameLevel->platform);
 
 		//apresentar o render
 		SDL_RenderPresent(renderer);
-		SDL_Delay(10);
+		//SDL_Delay(10);
 	}
 }
 
@@ -563,14 +646,17 @@ int getPLayerSpriteStatus() {
 void setPlay(int num) {
 	printf("Jogando");
 	clearScreen();
-	setNewVoidPlayer();
-	setPlayerLives(PLAYER_LIVES_VALUE);
+	if (onInit) {
+		onInit = false;
+		setNewVoidPlayer();
+		player->lives = PLAYER_LIVES_VALUE;
+	}
 	loadPlayerSurfaces();
 	setPlayerPosition(0, 100);
 	loadGroundSurface();
 	loadGroundTexture();
 	jumpStartPosition = newRect(0, 0, 0, 0);
-	groundRect = newRect(0, HEIGHT - 100, 100, WIDTH);
+	groundRect = newRect(0, HEIGHT - 100, 100, 2 * WIDTH);
 	player->yVel = GRAVITY;
 	SDL_RenderPresent(renderer);
 	player->jumpStatus = false;
@@ -580,13 +666,96 @@ void setPlay(int num) {
 		gameLevel->backgroundSurface = IMG_Load("Imagens/lab_background_full.png");
 		gameLevel->backgroundPosition = newRect(0, 0, bgHEIGHT, bgWIDTH);
 		gameLevel->platformSurface = IMG_Load("Imagens/ground.png");
+		gameLevel->starsSurface = IMG_Load("Imagens/star.png");
 		gameLevel->platform = SDL_CreateTextureFromSurface(renderer, gameLevel->platformSurface);
-		gameLevel->platforms[0] = groundRect;
-		gameLevel->platforms[1] = newRect(500, 300, gameLevel->platformSurface->h, gameLevel->platformSurface->w);
-		gameLevel->platforms[2] = newRect(0, 0, 0, 0);
-		gameLevel->platforms[3] = newRect(0, 0, 0, 0);
+		gameLevel->platforms[0] = newRect(0, HEIGHT - 50, 50, (2 * WIDTH - 500));//chao
+		gameLevel->platforms[1] = newRect(500, HEIGHT - 200, 50, gameLevel->platformSurface->w);//plat 1
+		gameLevel->platforms[2] = newRect(bgWIDTH - 400, HEIGHT - 200, 50, 300);//plat final
+		gameLevel->platforms[3] = newRect(880, 208, 50, 300);//plat 2
 		gameLevel->platforms[4] = newRect(0, 0, 0, 0);
+		gameLevel->platforms[5] = newRect(0, 0, 0, 0);
+		gameLevel->platforms[6] = newRect(0, 0, 0, 0);
+		gameLevel->starsPositions[0] = newRect(582, 277, 50, 50);
+		gameLevel->starsPositions[1] = newRect(WIDTH + 45, 150, 50, 50);
+		gameLevel->starsPositions[2] = newRect(WIDTH + 45, 442, 50, 50);
+		machine->position.x = 637 + WIDTH;
+		machine->position.y = HEIGHT - gameLevel->platforms[2].y - machine->position.h + 140;
 		printf("Case zero");
+		break;
+	case 1:
+		gameLevel->backgroundSurface = IMG_Load("Imagens/fase2.png");
+		gameLevel->backgroundPosition = newRect(0, 0, bgHEIGHT, bgWIDTH);
+		gameLevel->platformSurface = IMG_Load("Imagens/ground_mission2.png");
+		gameLevel->starsSurface = IMG_Load("Imagens/star.png");
+		gameLevel->enemySurface = IMG_Load("Imagens/arvore2.png");
+		gameLevel->enemyVelocity = ENEMY_VELOCITY;
+		gameLevel->enemies[0] = newRect(378, 274, 100, 100);
+		gameLevel->enemies[1] = newRect(787, HEIGHT - 50 - gameLevel->enemies[0].h, 100, 100);
+		for (int i = 0; i < ENEMIES_VALUE; i++) {
+			gameLevel->enemiesStart[i] = gameLevel->enemies[i];
+		}
+		gameLevel->starsPositions[0] = newRect(859, 156, 50, 50);
+		gameLevel->starsPositions[1] = newRect(WIDTH + 424, 90, 50, 50);
+		gameLevel->starsPositions[2] = newRect(WIDTH + 118, 435, 50, 50);
+		gameLevel->platform = SDL_CreateTextureFromSurface(renderer, gameLevel->platformSurface);
+		gameLevel->platforms[0] = newRect(0, HEIGHT - 50, 50, 300);//chao inicial
+		gameLevel->platforms[1] = newRect(375, 375, 50, 300);
+		gameLevel->platforms[2] = newRect(673, 208, 50, 300);
+		gameLevel->platforms[3] = newRect(770, HEIGHT-50, 50, 500);
+		gameLevel->platforms[4] = newRect(bgWIDTH - 345, 285, 50, 300);
+		gameLevel->platforms[5] = newRect(bgWIDTH - 749, 363, 50, 300);
+		gameLevel->platforms[6] = newRect(0, 0, 0, 0);
+		machine->position.x = WIDTH + 740;
+		machine->position.y = 118;
+		break;
+	case 2:
+		machine->position.x = WIDTH + 740;
+		gameLevel->backgroundSurface = IMG_Load("Imagens/future_city.png");
+		gameLevel->backgroundPosition = newRect(0, 0, bgHEIGHT, bgWIDTH);
+		gameLevel->platformSurface = IMG_Load("Imagens/ground3.png");
+		gameLevel->enemySurface = IMG_Load("Imagens/robot2.png");
+		gameLevel->starsSurface = IMG_Load("Imagens/star.png");
+		gameLevel->platforms[0] = newRect(0, HEIGHT - 50, 50, 300);//chao inicial
+		gameLevel->platforms[1] = newRect(367, 116, 50, 300);
+		gameLevel->platforms[2] = newRect(468, 426, 50, 300);
+		gameLevel->platforms[3] = newRect(906, 357, 50, 300);
+		gameLevel->platforms[4] = newRect(610, 250, 50, 100);
+		gameLevel->platforms[5] = newRect(WIDTH + 351, 224, 50, 300);
+		gameLevel->platforms[6] = newRect(WIDTH + 750, 283, 50, 300);
+		gameLevel->starsPositions[0] = newRect(488, 72, 50, 50);
+		gameLevel->starsPositions[1] = newRect(WIDTH + 242, 214, 50, 50);
+		gameLevel->starsPositions[2] = newRect(WIDTH + 666, 77, 50, 50);
+		gameLevel->enemies[0] = newRect(WIDTH + 345, 118, 100, 100);
+		gameLevel->enemies[1] = newRect(905, 268, 100, 100);
+		gameLevel->enemies[2] = newRect(0, 0, 0, 0);
+		//gameLevel->enemies[2] = newRect(460, 328, 100, 100);
+		for (int i = 0; i < ENEMIES_VALUE; i++) {
+			gameLevel->enemiesStart[i] = gameLevel->enemies[i];
+		}
+		break;
+	case 3:
+		machine->position.x = WIDTH + 740;
+		gameLevel->backgroundSurface = IMG_Load("Imagens/pangeia.png");
+		gameLevel->backgroundPosition = newRect(0, 0, bgHEIGHT, bgWIDTH);
+		gameLevel->platformSurface = IMG_Load("Imagens/ground_mission2.png");
+		gameLevel->enemySurface = IMG_Load("Imagens/dinossauro2.png");
+		gameLevel->starsSurface = IMG_Load("Imagens/star.png");
+		gameLevel->platforms[0] = newRect(0, HEIGHT - 50, 50, 300);//chao inicial
+		gameLevel->platforms[1] = newRect(517, HEIGHT - 50, 50, 700);//chao inicial
+		gameLevel->platforms[2] = newRect(WIDTH + 303, 382, 50, 300);
+		gameLevel->platforms[3] = newRect(WIDTH + 26, 206, 50, 200);
+		gameLevel->platforms[4] = newRect(640, 206, 50, 150);
+		gameLevel->platforms[5] = newRect(WIDTH + 724, 279, 50, 300);
+		gameLevel->platforms[6] = newRect(0, 0, 0, 0);
+		gameLevel->starsPositions[0] = newRect(697, 153, 50, 50);
+		gameLevel->starsPositions[1] = newRect(WIDTH + 533, 328, 50, 50);
+		gameLevel->starsPositions[2] = newRect(WIDTH + 92, 153, 50, 50);
+		gameLevel->enemies[0] = newRect(600, 400, 100, 100);
+		gameLevel->enemies[1] = newRect(600 + MAX_ENEMY_DISTANCE, 400, 100, 100);
+		gameLevel->enemies[2] = newRect(WIDTH + 312, 292, 100, 100);
+		for (int i = 0; i < ENEMIES_VALUE; i++) {
+			gameLevel->enemiesStart[i] = gameLevel->enemies[i];
+		}
 		break;
 	}
 }
@@ -673,16 +842,26 @@ bool movePlayer() {
 
 	//mover background e rects
 	difference = playerProjection.x - player->position.x;
-	//printf("Playerprojextion = %d, playerposition=%d, difference=%d\n", playerProjection.x, player->position.x, difference);
 	if (playerProjection.x < (WIDTH * 0.3) && playerProjection.x > 0) { //player na primeira parte da tela
 		if (difference < 0) {//personagem se movendo p tras
 			if (gameLevel->backgroundPosition.x - difference <= 0) {//se da pra mover o fundo
 				gameLevel->backgroundPosition.x -= difference;
+				//mover tb rects
+				machine->position.x -= difference;
+				for (int i = 0; i < NUM_PLATFORMS; i++) {
+					gameLevel->platforms[i].x -= difference;
+				}
+				for (int i = 0; i < NUM_STARS; i++) {
+					gameLevel->starsPositions[i].x -= difference;
+				}
+				for (int i = 0; i < ENEMIES_VALUE; i++) {
+					gameLevel->enemiesStart[i].x -= difference;
+					gameLevel->enemies[i].x -= difference;
+				}
 			}
 			else { //se n da pra mover bg
 				gameLevel->backgroundPosition.x = 0;
 				player->position.x = playerProjection.x;
-				//mover tb rects
 			}
 		}
 		else if (difference > 0) {//personagem movendo p frente
@@ -694,6 +873,17 @@ bool movePlayer() {
 			if (gameLevel->backgroundPosition.x - difference >= -WIDTH) {//pode mover o bg
 				gameLevel->backgroundPosition.x -= difference;
 				//fazer rects moverem
+				machine->position.x -= difference;
+				for (int i = 0; i < NUM_PLATFORMS; i++) {
+					gameLevel->platforms[i].x -= difference;
+				}
+				for (int i = 0; i < NUM_STARS; i++) {
+					gameLevel->starsPositions[i].x -= difference;
+				}
+				for (int i = 0; i < ENEMIES_VALUE; i++) {
+					gameLevel->enemiesStart[i].x -= difference;
+					gameLevel->enemies[i].x -= difference;
+				}
 			}
 			else {//n da pra mover o bg
 				gameLevel->backgroundPosition.x = -WIDTH;
@@ -708,14 +898,70 @@ bool movePlayer() {
 		player->position.x = playerProjection.x;
 	}
 	if (player->position.x < 0) player->position.x = 0;
-	if (player->position.x > WIDTH)player->position.x = WIDTH - player->position.w - 5;
+	if (player->position.x >= WIDTH - player->position.w) player->position.x = WIDTH - player->position.w;
 	player->position.y = playerProjection.y;
-	
-	//player->position = playerProjection;
 
-	
+	//verificar se player caiu em abismos
+	if (player->position.y > HEIGHT) playerLostLife();
 
+	//verificar pontuação
+	for (int i = 0; i < NUM_STARS; i++) {
+		if (SDL_HasIntersection(&player->position, &gameLevel->starsPositions[i])) {
+			gameLevel->starsPositions[i] = newRect(0, 0, 0, 0);
+			player->score += 300;
+		}
+	}
 
+	//verificar se encerrou o nível
+	if (SDL_HasIntersection(&player->position, &machine->position)) {
+		if (gameLevel->number + 1 >= 0 && gameLevel->number + 1 <= NUM_LEVELS) {
+			gameLevel->number++;
+			scoreTemp = player->score;
+			play(gameLevel->number);
+		}
+		else if(gameLevel->number + 1 > NUM_LEVELS){
+			winner();
+		}
+	}
+
+	//mover inimigo
+	if(gameLevel->number > 0) for (int i = 0; i < ENEMIES_VALUE; i++) {
+		if (gameLevel->enemyVelocity > 0) {
+			if (gameLevel->enemies[i].x + gameLevel->enemyVelocity - gameLevel->enemiesStart[i].x <= MAX_ENEMY_DISTANCE) {
+				gameLevel->enemies[i].x += gameLevel->enemyVelocity;
+			}
+			else {
+				gameLevel->enemyVelocity *= -1;
+				SDL_FreeSurface(gameLevel->enemySurface);
+				if (gameLevel->number == 1) gameLevel->enemySurface = IMG_Load("Imagens/arvore.png");
+				if (gameLevel->number == 2) gameLevel->enemySurface = IMG_Load("Imagens/robot.png");
+				if (gameLevel->number == 3) gameLevel->enemySurface = IMG_Load("Imagens/dinossauro.png");
+			}
+		}
+		else {
+			if (gameLevel->enemies[i].x + gameLevel->enemyVelocity >= gameLevel->enemiesStart[i].x) {
+				gameLevel->enemies[i].x += gameLevel->enemyVelocity;
+			}
+			else {
+				gameLevel->enemyVelocity *= -1;
+				SDL_FreeSurface(gameLevel->enemySurface);
+				if(gameLevel->number == 1) gameLevel->enemySurface = IMG_Load("Imagens/arvore2.png");
+				if (gameLevel->number == 2) gameLevel->enemySurface = IMG_Load("Imagens/robot2.png");
+				if (gameLevel->number == 3) gameLevel->enemySurface = IMG_Load("Imagens/dinossauro2.png");
+			}
+		}
+	}
+
+	//verificar colisao com inimigo
+	for (int i = 0; i < ENEMIES_VALUE; i++) {
+		if (SDL_HasIntersection(&playerYProjection, &gameLevel->enemies[i]) && !SDL_HasIntersection(&playerXProjection, &gameLevel->enemies[i])) {
+			gameLevel->enemies[i] = newRect(0, 0, 0, 0);
+			player->score += 100;
+		}
+		else if (SDL_HasIntersection(&playerXProjection, &gameLevel->enemies[i])) {
+			playerLostLife();
+		}
+	}
 }
 
 void changePlayerSprite(SDL_Event event) {
@@ -781,17 +1027,31 @@ bool loadPlayerTexture() {
 }
 
 void setNewVoidPlayer() {
+	free(player);
 	PLAYER* p = (PLAYER*) malloc(sizeof(PLAYER));
 	player = p;
 	player->spriteStatus = 0;
+	player->score = 0;
 	player->xVel = 0;
 	player->yVel = GRAVITY;
 	player->jumpStatus = false;
+	player->lives = PLAYER_LIVES_VALUE;
 }
 
 void setPlayerLives(int lives) {
-	if(lives >= 0 && lives <= PLAYER_LIVES_VALUE) player->lives = lives;
+	if (lives >= 0 && lives <= PLAYER_LIVES_VALUE) {
+		player->lives = lives;
+	}
 	if (player->lives == 0) gameOver();
+}
+
+void playerLostLife() {
+	if (player->lives - 1 > 0) {
+		player->lives -= 1;
+		player->score = scoreTemp;
+		play(gameLevel->number);
+	}
+	else gameOver();
 }
 
 void loadGroundSurface() {
@@ -804,5 +1064,33 @@ void loadGroundTexture() {
 }
 
 void gameOver() {
+	SDL_RenderClear(renderer);
+	std::string a = "Game over. Score: " + std::to_string(player->score);
+	textSurface = TTF_RenderText_Solid(font, a.c_str(), WHITE);
+	SDL_Texture* textura;
+	SDL_Rect temp;
+	textura = SDL_CreateTextureFromSurface(renderer, textSurface);
+	SDL_QueryTexture(textura, NULL, NULL, &temp.w, &temp.h);
+	temp = newRect(WIDTH * 0.5 - temp.w, HEIGHT * 0.5 - temp.h, temp.h, temp.w);
+	SDL_RenderCopy(renderer, textura, NULL, &temp);
+	SDL_RenderPresent(renderer);
+	SDL_Delay(4000);
+	SDL_DestroyWindow(window);
+	main(NULL, NULL);
+}
 
+void winner() {
+	SDL_RenderClear(renderer);
+	std::string a = "Parabéns! Você ganhou. Score: " + std::to_string(player->score);
+	textSurface = TTF_RenderText_Solid(font, a.c_str(), WHITE);
+	SDL_Texture* textura;
+	SDL_Rect temp;
+	textura = SDL_CreateTextureFromSurface(renderer, textSurface);
+	SDL_QueryTexture(textura, NULL, NULL, &temp.w, &temp.h);
+	temp = newRect(WIDTH * 0.5 - temp.w, HEIGHT * 0.5 - temp.h, temp.h, temp.w);
+	SDL_RenderCopy(renderer, textura, NULL, &temp);
+	SDL_RenderPresent(renderer);
+	SDL_Delay(4000);
+	SDL_DestroyWindow(window);
+	main(NULL, NULL);
 }
