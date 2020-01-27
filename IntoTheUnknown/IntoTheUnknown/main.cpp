@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_DEPRECATE
 #include<stdio.h>
 #include<SDL.h>
 #include "SDL_opengl.h"
@@ -6,6 +7,7 @@
 #include<string>
 #include"play.h"
 #include <SDL_ttf.h>
+#include <SDL_mixer.h>
 
 //CONSTANTES
 #define PLAYING true
@@ -112,6 +114,13 @@ SDL_Surface* textPreSurface;
 SDL_Texture* textTexture;
 SDL_Texture* textPreTexture;
 timeMachine* machine;
+Mix_Chunk* jumpSound = NULL;
+Mix_Chunk* starSound = NULL;
+Mix_Chunk* killSound = NULL;
+Mix_Chunk* gameoverSound = NULL;
+Mix_Chunk* transitionSound = NULL;
+Mix_Chunk* victorySound = NULL;
+std::string playerName;
 SDL_Rect textRects[1][3] = {
 	 {newRect(174, 156, 0, 0), newRect(174, 156, 0, 0), newRect(174, 156, 0, 0)}
 };
@@ -179,6 +188,7 @@ void gameOver();
 void onDialogue();
 void playerLostLife();
 void winner();
+void gravar(std::string s);
 
 //FUNCTIONS
 void startFont();
@@ -190,6 +200,7 @@ void startSDL() {
 	IMG_Init(IMG_INIT_PNG);
 	TTF_Init();
 	startFont();
+	Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096);
 }
 
 void createWindow() {
@@ -348,6 +359,12 @@ int main(int argc, char *argv[]) {
 	createWindow();
 	startImages();
 	setMenuPrincipal();
+	jumpSound = Mix_LoadWAV("sounds/jump.wav");
+	starSound = Mix_LoadWAV("sounds/star.wav");
+	killSound = Mix_LoadWAV("sounds/kill.wav");
+	gameoverSound = Mix_LoadWAV("sounds/gameover.wav");
+	transitionSound = Mix_LoadWAV("sounds/transition.wav");
+	victorySound = Mix_LoadWAV("sounds/victory.wav");
 	bool stay = true;
 	while (stay) {
 		while (SDL_PollEvent(&eventHappened)) {
@@ -371,12 +388,68 @@ int main(int argc, char *argv[]) {
 					}
 					if (menuStatus == 1) {
 						//CRÉDITOS
+						SDL_RenderClear(renderer);
+						SDL_Rect recta = newRect(0, 0, HEIGHT, WIDTH);
+						SDL_Texture* creditos = SDL_CreateTextureFromSurface(renderer, IMG_Load("Imagens/creditos.png"));
+						SDL_RenderCopy(renderer, creditos, NULL, &recta);
+						SDL_RenderPresent(renderer);
+						SDL_DestroyTexture(creditos);
+						SDL_Delay(5000);
 					}
 					if (menuStatus == 2) {
 						//RANKING
+						SDL_RenderClear(renderer);
+						SDL_Rect rects[5];
+						SDL_Surface* surfaces[5];
+						SDL_Texture* textures[5];
+						SDL_Rect rects2[5];
+						SDL_Surface* surfaces2[5];
+						SDL_Texture* textures2[5];
+						rects[0] = newRect(0, 0, 0, 0);
+						rects[1] = newRect(0, 50, 0, 0);
+						rects[2] = newRect(0, 100, 0, 0);
+						rects[3] = newRect(0, 150, 0, 0);
+						rects[4] = newRect(0, 200, 0, 0);
+						rects2[0] = newRect(400, 0, 0, 0);
+						rects2[1] = newRect(400, 50, 0, 0);
+						rects2[2] = newRect(400, 100, 0, 0);
+						rects2[3] = newRect(400, 150, 0, 0);
+						rects2[4] = newRect(400, 200, 0, 0);
+						FILE* a = fopen("Ranking.txt", "r");
+						int ranking[5];
+						char nomea[5][30];
+						char temp[5][6];
+						for (int i = 0; i < 5; i++) {
+							fgets(nomea[i], 30, a);
+							fgets(temp[i], 6, a);
+						}
+						for (int i = 0; i < 5; i++) {
+							surfaces[i] = TTF_RenderText_Solid(font, nomea[i], WHITE);
+							textures[i] = SDL_CreateTextureFromSurface(renderer, surfaces[i]);
+							SDL_QueryTexture(textures[i], NULL, NULL, &rects[i].w, &rects[i].h);
+							SDL_RenderCopy(renderer, textures[i], NULL, &rects[i]);
+							SDL_DestroyTexture(textures[i]);
+							SDL_FreeSurface(surfaces[i]);
+						}
+						for (int i = 0; i < 5; i++) {
+							surfaces2[i] = TTF_RenderText_Solid(font, temp[i], WHITE);
+							textures2[i] = SDL_CreateTextureFromSurface(renderer, surfaces2[i]);
+							SDL_QueryTexture(textures2[i], NULL, NULL, &rects2[i].w, &rects2[i].h);
+							SDL_RenderCopy(renderer, textures2[i], NULL, &rects2[i]);
+							SDL_DestroyTexture(textures2[i]);
+							SDL_FreeSurface(surfaces2[i]);
+						}
+						SDL_RenderPresent(renderer);
+						SDL_Delay(5000);
 					}
 					if (menuStatus == 3) {
 						//AJUDA
+						SDL_RenderClear(renderer);
+						SDL_Texture* ajuda = SDL_CreateTextureFromSurface(renderer, IMG_Load("Imagens/ajuda.png"));
+						SDL_RenderCopy(renderer, ajuda, NULL, &newRect(0, 0, HEIGHT, WIDTH));
+						SDL_RenderPresent(renderer);
+						SDL_DestroyTexture(ajuda);
+						SDL_Delay(5000);
 					}
 					if (menuStatus == 4) {
 						//SAIR
@@ -540,7 +613,7 @@ void play(int num) {
 	SDL_RenderClear(renderer);
 	textSurface = TTF_RenderText_Blended_Wrapped(font, levelTitles[num].c_str(), WHITE, 800);
 	textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
-	textPreSurface = TTF_RenderText_Solid(font, levelTitlesPre[num].c_str(), WHITE);
+	if(num<NUM_LEVELS)textPreSurface = TTF_RenderText_Solid(font, levelTitlesPre[num].c_str(), WHITE);
 	textPreTexture = SDL_CreateTextureFromSurface(renderer, textPreSurface);
 	SDL_QueryTexture(textPreTexture, NULL, NULL, &tempRect2.w, &tempRect2.h);
 	SDL_QueryTexture(textTexture, NULL, NULL, &tempRect.w, &tempRect.h);
@@ -549,7 +622,7 @@ void play(int num) {
 	SDL_RenderCopy(renderer, textPreTexture, NULL, &tempRect2);
 	SDL_RenderCopy(renderer, textTexture, NULL, &newRect((WIDTH / 2 - textSurface->w / 2), (HEIGHT / 2 - textSurface->h / 2), tempRect.h, tempRect.w));
 	SDL_RenderPresent(renderer);
-	SDL_Delay(1000);//lemrar de aumentarrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr p 5000
+	SDL_Delay(5000);
 	while (stay) {
 		while (SDL_PollEvent(&eventHappened)) {
 			if (eventHappened.type == SDL_QUIT) {
@@ -765,6 +838,7 @@ void handleEvent(SDL_Event event) {
 		//movePlayer();
 		if (event.key.keysym.sym == SDLK_UP) {
 			if (player->jumpStatus == false) {
+				Mix_PlayChannel(-1, jumpSound, 0);
 				printf("mds pulei");
 				player->yVel = -GRAVITY;
 				player->jumpStatus = true;
@@ -907,6 +981,7 @@ bool movePlayer() {
 	//verificar pontuação
 	for (int i = 0; i < NUM_STARS; i++) {
 		if (SDL_HasIntersection(&player->position, &gameLevel->starsPositions[i])) {
+			Mix_PlayChannel(-1, starSound, 0);
 			gameLevel->starsPositions[i] = newRect(0, 0, 0, 0);
 			player->score += 300;
 		}
@@ -914,12 +989,13 @@ bool movePlayer() {
 
 	//verificar se encerrou o nível
 	if (SDL_HasIntersection(&player->position, &machine->position)) {
-		if (gameLevel->number + 1 >= 0 && gameLevel->number + 1 <= NUM_LEVELS) {
+		if (gameLevel->number + 1 >= 0 && gameLevel->number + 1 < NUM_LEVELS) {
+			Mix_PlayChannel(-1, transitionSound, 0);
 			gameLevel->number++;
 			scoreTemp = player->score;
 			play(gameLevel->number);
 		}
-		else if(gameLevel->number + 1 > NUM_LEVELS){
+		else{
 			winner();
 		}
 	}
@@ -956,6 +1032,7 @@ bool movePlayer() {
 	for (int i = 0; i < ENEMIES_VALUE; i++) {
 		if (SDL_HasIntersection(&playerYProjection, &gameLevel->enemies[i]) && !SDL_HasIntersection(&playerXProjection, &gameLevel->enemies[i])) {
 			gameLevel->enemies[i] = newRect(0, 0, 0, 0);
+			Mix_PlayChannel(-1, killSound, 0);
 			player->score += 100;
 		}
 		else if (SDL_HasIntersection(&playerXProjection, &gameLevel->enemies[i])) {
@@ -1064,33 +1141,137 @@ void loadGroundTexture() {
 }
 
 void gameOver() {
-	SDL_RenderClear(renderer);
-	std::string a = "Game over. Score: " + std::to_string(player->score);
-	textSurface = TTF_RenderText_Solid(font, a.c_str(), WHITE);
+	Mix_PlayChannel(-1, gameoverSound, 0);
+	SDL_StartTextInput();
+	std::string in;
+	bool running = true;
 	SDL_Texture* textura;
+	SDL_Texture* textura2;
 	SDL_Rect temp;
-	textura = SDL_CreateTextureFromSurface(renderer, textSurface);
-	SDL_QueryTexture(textura, NULL, NULL, &temp.w, &temp.h);
-	temp = newRect(WIDTH * 0.5 - temp.w, HEIGHT * 0.5 - temp.h, temp.h, temp.w);
-	SDL_RenderCopy(renderer, textura, NULL, &temp);
-	SDL_RenderPresent(renderer);
-	SDL_Delay(4000);
+	SDL_Rect temp2;
+
+	while (running) {
+		SDL_Event ev;
+		while (SDL_PollEvent(&ev)) {
+			if (ev.type == SDL_TEXTINPUT) {
+				in += ev.text.text;
+			}
+			else if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_BACKSPACE && in.size()) {
+				in.pop_back();
+			} else if (ev.type == SDL_QUIT) {
+				running = false;
+			}
+			else if (ev.key.keysym.sym == SDLK_KP_ENTER || ev.key.keysym.sym == SDLK_RETURN) {
+				gravar(in);
+				running = false;
+			}
+		}
+		SDL_RenderClear(renderer);
+		std::string a = "Game over. Score: " + std::to_string(player->score) + ". Digite seu nome: ";
+		textSurface = TTF_RenderText_Solid(font, a.c_str(), WHITE);
+		textura = SDL_CreateTextureFromSurface(renderer, textSurface);
+		SDL_QueryTexture(textura, NULL, NULL, &temp.w, &temp.h);
+		temp = newRect(WIDTH * 0.5 - temp.w, HEIGHT * 0.5 - temp.h, temp.h, temp.w);
+
+		textSurface = TTF_RenderText_Solid(font, in.c_str(), WHITE);
+		textura2 = SDL_CreateTextureFromSurface(renderer, textSurface);
+		SDL_QueryTexture(textura2, NULL, NULL, &temp2.w, &temp2.h);
+		temp2 = newRect(WIDTH * 0.5 - temp.w, HEIGHT * 0.5 - temp2.h + 200, temp2.h, temp2.w);
+
+		SDL_RenderCopy(renderer, textura, NULL, &temp);
+		SDL_RenderCopy(renderer, textura2, NULL, &temp2);
+		SDL_RenderPresent(renderer);
+		SDL_DestroyTexture(textura);
+		SDL_DestroyTexture(textura2);
+	}
+
+	SDL_StopTextInput();
+
 	SDL_DestroyWindow(window);
 	main(NULL, NULL);
 }
 
 void winner() {
-	SDL_RenderClear(renderer);
-	std::string a = "Parabéns! Você ganhou. Score: " + std::to_string(player->score);
-	textSurface = TTF_RenderText_Solid(font, a.c_str(), WHITE);
+	Mix_PlayChannel(-1, victorySound, 0);
+	SDL_StartTextInput();
+	std::string in;
+	bool running = true;
 	SDL_Texture* textura;
+	SDL_Texture* textura2;
 	SDL_Rect temp;
-	textura = SDL_CreateTextureFromSurface(renderer, textSurface);
-	SDL_QueryTexture(textura, NULL, NULL, &temp.w, &temp.h);
-	temp = newRect(WIDTH * 0.5 - temp.w, HEIGHT * 0.5 - temp.h, temp.h, temp.w);
-	SDL_RenderCopy(renderer, textura, NULL, &temp);
-	SDL_RenderPresent(renderer);
-	SDL_Delay(4000);
+	SDL_Rect temp2;
+
+	while (running) {
+		SDL_Event ev;
+		while (SDL_PollEvent(&ev)) {
+			if (ev.type == SDL_TEXTINPUT) {
+				in += ev.text.text;
+			}
+			else if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_BACKSPACE && in.size()) {
+				in.pop_back();
+			}
+			else if (ev.type == SDL_QUIT) {
+				running = false;
+			}
+			else if (ev.key.keysym.sym == SDLK_KP_ENTER || ev.key.keysym.sym == SDLK_RETURN) {
+				gravar(in);
+				running = false;
+			}
+		}
+		SDL_RenderClear(renderer);
+		std::string a = "Parabéns! Você ganhou!. Score: " + std::to_string(player->score) + ". Digite seu nome: ";
+		textSurface = TTF_RenderText_Solid(font, a.c_str(), WHITE);
+		textura = SDL_CreateTextureFromSurface(renderer, textSurface);
+		SDL_QueryTexture(textura, NULL, NULL, &temp.w, &temp.h);
+		temp = newRect(WIDTH * 0.5 - temp.w, HEIGHT * 0.5 - temp.h, temp.h, temp.w);
+
+		textSurface = TTF_RenderText_Solid(font, in.c_str(), WHITE);
+		textura2 = SDL_CreateTextureFromSurface(renderer, textSurface);
+		SDL_QueryTexture(textura2, NULL, NULL, &temp2.w, &temp2.h);
+		temp2 = newRect(WIDTH * 0.5 - temp2.w, HEIGHT * 0.5 - temp2.h + 200, temp2.h, temp2.w);
+
+		SDL_RenderCopy(renderer, textura, NULL, &temp);
+		SDL_RenderCopy(renderer, textura2, NULL, &temp2);
+		SDL_RenderPresent(renderer);
+		SDL_DestroyTexture(textura);
+		SDL_DestroyTexture(textura2);
+	}
+	SDL_StopTextInput();
+
 	SDL_DestroyWindow(window);
 	main(NULL, NULL);
+}
+
+void gravar(std::string nome) {
+	FILE* a = fopen("Ranking.txt", "w");
+	int ranking[5];
+	char nomea[5][30];
+	char playernome[30];
+	strcpy(playernome, nome.c_str());
+	char temporario[6];
+	char temps[30];
+	for (int i = 0; i < 5; i++) {
+		fgets(nomea[i], 30, a);
+		fgets(temporario, 6, a);
+		ranking[i] = atoi(temporario);
+	}
+
+	freopen("Ranking.txt", "w", a);
+	for (int i = 0; i < 5; i++) {
+		if (player->score < ranking[i]) {
+			int temp = player->score;
+			player->score = ranking[i];
+			ranking[i] = temp;
+			strcpy(temps, *nomea);
+			strcpy(*nomea, playernome);
+			strcpy(playernome, temps);
+		}
+	}
+
+	for (int i = 0; i < 5; i++) {
+		fprintf(a, std::strcat(nomea[i], "\n"));
+		std::string poa = std::to_string(ranking[i]);
+		poa += "\n";
+		fprintf(a, poa.c_str());
+	}
 }
